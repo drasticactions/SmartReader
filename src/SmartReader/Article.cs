@@ -72,7 +72,9 @@ namespace SmartReader
             Excerpt = metadata.Excerpt;
             Length = article.TextContent.Length;
             Language = string.IsNullOrWhiteSpace(metadata.Language) ? language : metadata.Language;
-            PublicationDate = metadata.PublicationDate;
+            DateTime test = new DateTime();
+            DateTime.TryParse(metadata.PublicationDate, out test);
+            PublicationDate = test;
             Author = string.IsNullOrWhiteSpace(metadata.Author) ? author : metadata.Author;
             SiteName = metadata.SiteName;
             IsReadable = readable;

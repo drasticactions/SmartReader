@@ -675,7 +675,7 @@ namespace SmartReader
                   date : DateTime.MinValue;
             }
 
-            metadata.PublicationDate = DateHeuristics().FirstOrDefault(d => d != DateTime.MinValue);
+            metadata.PublicationDate = DateHeuristics().FirstOrDefault(d => d != DateTime.MinValue).ToString();
 
             if (metadata.PublicationDate is null)
             {
@@ -686,20 +686,28 @@ namespace SmartReader
                     if (!string.IsNullOrEmpty(time.GetAttribute("pubDate"))
                         && DateTime.TryParse(time.GetAttribute("datetime"), out date))
                     {
-                        metadata.PublicationDate = date;
+                        metadata.PublicationDate = date.ToString();
                     }
                 }
             }
 
             if (metadata.PublicationDate is null)
             {
-                // as a last resort check the URL for a date
                 Match maybeDate = Regex.Match(uri.PathAndQuery, "/(?<year>[0-9]{4})/(?<month>[0-9]{2})/(?<day>[0-9]{2})?");
-                if (maybeDate.Success)
+
+                try
                 {
-                    metadata.PublicationDate = new DateTime(int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture),
-                        int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture),
-                        !string.IsNullOrEmpty(maybeDate.Groups["day"].Value) ? int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture) : 1);
+                    // as a last resort check the URL for a date
+                    if (maybeDate.Success)
+                    {
+                        metadata.PublicationDate = new DateTime(int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture),
+                            int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture),
+                            !string.IsNullOrEmpty(maybeDate.Groups["day"].Value) ? int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture) : 1).ToString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    metadata.PublicationDate = maybeDate.Value;
                 }
             }
 
