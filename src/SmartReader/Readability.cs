@@ -439,7 +439,14 @@ namespace SmartReader
                         if (root.TryGetProperty("datePublished", out value)
                             && value.ValueKind == JsonValueKind.String)
                         {
-                            jsonLDMetadata["jsonld:datePublished"] = value.GetProperty("datePublished").GetString()!;
+                            try
+                            {
+                                jsonLDMetadata["jsonld:datePublished"] = value.GetProperty("datePublished").GetString()!;
+                            }
+                            catch (Exception)
+                            {
+                                jsonLDMetadata["jsonld:datePublished"] = value.GetString()!.Trim();
+                            }
                         }
                         if (root.TryGetProperty("image", out value)
                             && value.ValueKind == JsonValueKind.String)
