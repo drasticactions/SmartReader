@@ -31,10 +31,6 @@
     <WarningLevel>2</WarningLevel>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>C:\Users\Gabriele\Progetti\C#\SmartReader\src\SmartReader\SmartReader.xml</DocumentationFile>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="0.17.1" />
     <PackageReference Include="System.Text.Json" Version="5.0.2" />
