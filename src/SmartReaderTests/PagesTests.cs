@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Moq;
@@ -15,7 +17,7 @@ namespace SmartReaderTests
         private readonly ITestOutputHelper _output;
         public PagesTests(ITestOutputHelper output)
         {
-            _output = output;            
+            _output = output;
         }
 
         public IArticleTest GetTestArticle(ArticleMetadata metadata, string content)
@@ -27,11 +29,11 @@ namespace SmartReaderTests
             mockArticle.Setup(x => x.Dir).Returns(metadata.Dir);
             mockArticle.Setup(x => x.Byline).Returns(metadata.Byline ?? "");
             mockArticle.Setup(x => x.Author).Returns(string.IsNullOrEmpty(metadata.Author) ? null : metadata.Author);
-            mockArticle.Setup(x => x.PublicationDate).Returns(string.IsNullOrEmpty(metadata.PublicationDate) ? (DateTime?) null : DateTime.Parse(metadata.PublicationDate.ToString()));
-            mockArticle.Setup(x => x.Language).Returns(string.IsNullOrEmpty(metadata.Language) ? null : metadata.Language.ToString());			
+            mockArticle.Setup(x => x.PublicationDate).Returns(string.IsNullOrEmpty(metadata.PublicationDate) ? (DateTime?)null : DateTime.Parse(metadata.PublicationDate.ToString()));
+            mockArticle.Setup(x => x.Language).Returns(string.IsNullOrEmpty(metadata.Language) ? null : metadata.Language.ToString());
             mockArticle.Setup(x => x.Excerpt).Returns(metadata.Excerpt ?? "");
             mockArticle.Setup(x => x.SiteName).Returns(metadata.SiteName ?? "");
-            mockArticle.Setup(x => x.TimeToRead).Returns(TimeSpan.Parse(metadata.TimeToRead));
+            mockArticle.Setup(x => x.TimeToRead).Returns(TimeSpan.Parse(metadata.TimeToRead ?? "0"));
             mockArticle.Setup(x => x.Content).Returns(content);
             mockArticle.Setup(x => x.FeaturedImage).Returns(metadata.FeaturedImage ?? "");
 
@@ -40,10 +42,12 @@ namespace SmartReaderTests
 
         private void UpdateExpectedJson(Article article, string directory)
         {
-            var jso = new JsonSerializerOptions { 
-                WriteIndented = true, 
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
-            };
+            var jso = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
 
             var obj = new
             {
@@ -64,7 +68,7 @@ namespace SmartReaderTests
         }
 
         private void UpdateExpectedHtml(string html, string directory)
-        {           
+        {
             File.WriteAllText(Path.Combine(directory, @"expected.html"), html);
         }
 
@@ -73,10 +77,10 @@ namespace SmartReaderTests
             Assert.Equal(expected.IsReadable, found.IsReadable);
             Assert.Equal(expected.Title, found.Title);
             Assert.Equal(expected.Dir, found.Dir);
-            Assert.Equal(expected.Byline, found.Byline);            
-            Assert.Equal(expected.Author, found.Author);            
+            Assert.Equal(expected.Byline, found.Byline);
+            Assert.Equal(expected.Author, found.Author);
             Assert.Equal(expected.PublicationDate?.ToString(), found.PublicationDate?.ToString());
-            Assert.Equal(expected.Language, found.Language);			
+            Assert.Equal(expected.Language, found.Language);
             Assert.Equal(expected.Excerpt, found.Excerpt);
             Assert.Equal(expected.SiteName, found.SiteName);
             Assert.Equal(expected.TimeToRead, found.TimeToRead);
@@ -85,30 +89,30 @@ namespace SmartReaderTests
         }
 
         public static IEnumerable<object[]> GetTests()
-        {            
+        {
             foreach (var d in Directory.EnumerateDirectories(@"..\..\..\test-pages\"))
-            {                
-                yield return new object[] { d };               
+            {
+                yield return new object[] { d };
             }
         }
 
         [Theory]
         [MemberData(nameof(GetTests))]
         public void TestPages(string directory)
-        {
-            var jso = new JsonSerializerOptions {
+        {                 
+            var jso = new JsonSerializerOptions
+            {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
-                        
-            
+            };            
+
             var sourceContent = File.ReadAllText(Path.Combine(directory, @"source.html"));
 
-            Article found = Reader.ParseArticle("https://localhost/", text: sourceContent);            
+            Article found = Reader.ParseArticle("https://localhost/", text: sourceContent);
 
             var expectedContent = File.ReadAllText(Path.Combine(directory, @"expected.html"));
             var expectedMetadataText = File.ReadAllText(Path.Combine(directory, @"expected-metadata.json"));
-            var expectedMetadata = JsonSerializer.Deserialize<ArticleMetadata>(expectedMetadataText, jso);            
-            
+            var expectedMetadata = JsonSerializer.Deserialize<ArticleMetadata>(expectedMetadataText, jso);
+
             IArticleTest expected = GetTestArticle(expectedMetadata, expectedContent);
 
             AssertProperties(expected, found);

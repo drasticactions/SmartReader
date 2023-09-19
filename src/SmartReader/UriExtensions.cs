@@ -19,7 +19,7 @@ namespace SmartReader
             sb.Append(startUri.Host);
 
             if (!startUri.IsDefaultPort)
-            { 
+            {
                 sb.Append(':');
                 sb.Append(startUri.Port.ToString(CultureInfo.InvariantCulture));
             }
@@ -49,7 +49,7 @@ namespace SmartReader
             // Ignore hash URIs
             if (uriToCheck[0] == '#')
                 return uriToCheck;
-            
+
             // Scheme-rooted relative URI.
             if (uriToCheck.StartsWith("//", StringComparison.Ordinal))
                 return scheme + "://" + uriToCheck.Substring(2);
@@ -61,6 +61,12 @@ namespace SmartReader
             // Dotslash relative URI.
             if (uriToCheck.StartsWith("./", StringComparison.Ordinal))
                 return pathBase + uriToCheck.Substring(2);
+
+            // Ignore data URI.
+            // Note that data URI encoded in base64 are already ignored by the
+            // IsWellFormedUriString check. This check is necessary for dataURI in UTF-8
+            if (uriToCheck.StartsWith("data:", StringComparison.Ordinal))
+                return uriToCheck;
 
             // Standard relative URI; add entire path. pathBase already includes a
             // trailing "/".

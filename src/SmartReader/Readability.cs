@@ -23,13 +23,13 @@ namespace SmartReader
         private static readonly Regex RE_Tokenize = new Regex(@"\W+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // See: https://schema.org/Article
-        private static readonly HashSet<string> JsonLdArticleTypes = new (new[] {
+        private static readonly HashSet<string> JsonLdArticleTypes = new(new[] {
             "Article", "AdvertiserContentArticle", "NewsArticle", "AnalysisNewsArticle", "AskPublicNewsArticle",
             "BackgroundNewsArticle", "OpinionNewsArticle", "ReportageNewsArticle", "ReviewNewsArticle", "Report",
             "SatiricalArticle", "ScholarlyArticle", "MedicalScholarlyArticle", "SocialMediaPosting", "BlogPosting",
-            "LiveBlogPosting", "DiscussionForumPosting", "TechArticle", "APIReference" 
+            "LiveBlogPosting", "DiscussionForumPosting", "TechArticle", "APIReference"
         });
-     
+
         private static readonly char[] s_space = { ' ' };
         private static readonly string[] s_img_picture_figure_video_audio_source = { "img", "picture", "figure", "video", "audio", "source" };
 
@@ -128,14 +128,14 @@ namespace SmartReader
                 }
 
                 if (media.GetAttribute("srcset") is string srcset)
-                {                        
+                {
                     var newSrcset = RE_SrcSetUrl.Replace(srcset, (input) =>
                     {
                         return uri.ToAbsoluteURI(input.Groups[1].Value) + (input.Groups[2]?.Value ?? "") + input.Groups[3].Value;
-                    });                                 
+                    });
 
                     media.SetAttribute("srcset", newSrcset);
-                }                          
+                }
             }
         }
 
@@ -154,9 +154,8 @@ namespace SmartReader
             // eliminate any text after a separator
             if (!string.IsNullOrEmpty(siteName) && title.IndexOfAny(titleSeperators) != -1)
             {
-
                 // we eliminate the text after the separator only if it is the site name
-                title = Regex.Replace(title, $"(.*) [\\|\\-\\\\/>»] {siteName}.*", "$1", RegexOptions.IgnoreCase);
+                title = Regex.Replace(title, $"(.*) [\\|\\-\\\\/>»] {Regex.Escape(siteName)}.*", "$1", RegexOptions.IgnoreCase);
             }
 
             title = RE_Normalize.Replace(title, " ");
@@ -188,10 +187,7 @@ namespace SmartReader
                         var child = node.Children[0];
                         for (var i = 0; i < node.Attributes.Length; i++)
                         {
-                            if (node.Attributes[i]!.Name.IsXmlName())
-                                child.SetAttribute(node.Attributes[i]!.Name, node.Attributes[i]!.Value);
-                            else
-                                child.SetAttribute(node.Attributes[i]!.Name.CleanXmlName(), node.Attributes[i]!.Value);
+                            NodeUtility.SafeSetAttribute(child, node.Attributes[i]!);                            
                         }
                         node.Parent.ReplaceChild(child, node);
                         node = child;
@@ -221,7 +217,7 @@ namespace SmartReader
                 if (typeof(string) != curTitle.GetType())
                     curTitle = origTitle = NodeUtility.GetInnerText(doc.GetElementsByTagName("title")[0]);
             }
-            catch (Exception e) {/* ignore exceptions setting the title. */}
+            catch (Exception) {/* ignore exceptions setting the title. */}
 
             var titleHadHierarchicalSeparators = false;
             static int wordCount(string str)
@@ -269,7 +265,7 @@ namespace SmartReader
                     curTitle = NodeUtility.GetInnerText(hOnes[0]);
             }
 
-            curTitle = curTitle.Trim();
+            curTitle = RE_Normalize.Replace(curTitle.Trim(), " ");
 
             // If we now have 4 words or fewer as our title, and either no
             // 'hierarchical' separators (\, /, > or ») were found in the original
@@ -293,8 +289,8 @@ namespace SmartReader
         /// the result is given by the lower length of unique parts
         /// </summary>
         /// <param name="textA">first text to compare</param>
-        /// <param name="textb">second text to compare</param>
-        internal static int TextSimilarity(string textA, string textB)
+        /// <param name="textB">second text to compare</param>
+        internal static float TextSimilarity(string textA, string textB)
         {
             var tokensA = RE_Tokenize.Split(textA.ToLowerInvariant()).Where(x => x.Length != 0).ToArray();
             var tokensB = RE_Tokenize.Split(textB.ToLowerInvariant()).Where(x => x.Length != 0).ToArray();
@@ -302,8 +298,8 @@ namespace SmartReader
             {
                 return 0;
             }
-            var uniqTokensB = tokensB.Where(token => !tokensA.Contains(token));            
-            var distanceB = string.Join(" ", uniqTokensB).Length / string.Join(" ", tokensB).Length;            
+            var uniqTokensB = tokensB.Where(token => !tokensA.Contains(token));
+            var distanceB = (float) string.Join(" ", uniqTokensB).Length / string.Join(" ", tokensB).Length;
             return 1 - distanceB;
         }
 
@@ -327,13 +323,13 @@ namespace SmartReader
         /// <returns>Dictionary with any metadata that could be extracted (possibly none)</returns>
         internal static Dictionary<string, string> GetJSONLD(IHtmlDocument doc)
         {
-            var jsonLDMetadata = new Dictionary<string, string>();            
-            
+            var jsonLDMetadata = new Dictionary<string, string>();
+
             var scripts = doc.DocumentElement.GetElementsByTagName("script");
 
             NodeUtility.ForEachElement(scripts, jsonLdElement =>
             {
-                if(jsonLDMetadata.Count == 0 && jsonLdElement?.GetAttribute("type") is "application/ld+json")
+                if (jsonLDMetadata.Count == 0 && jsonLdElement?.GetAttribute("type") is "application/ld+json")
                 {
                     try
                     {
@@ -447,12 +443,9 @@ namespace SmartReader
                             jsonLDMetadata["jsonld:image"] = value.GetProperty("image").GetString()!;
                         }
                     }
-                    catch (Exception e)
-                    {
-
-                    }
+                    catch (Exception) { }
                 }
-            });            
+            });
 
             return jsonLDMetadata;
         }
@@ -470,7 +463,7 @@ namespace SmartReader
         internal static Metadata GetArticleMetadata(IHtmlDocument doc, Uri uri, string? language, Dictionary<string, string> jsonLD)
         {
             var metadata = new Metadata();
-            Dictionary<string, string> values = jsonLD;            
+            Dictionary<string, string> values = jsonLD;
             var metaElements = doc.GetElementsByTagName("meta");
 
             // Match "description", or Twitter's "twitter:description" (Cards)
@@ -501,7 +494,7 @@ namespace SmartReader
                 string name = "";
 
                 if (elementName is "author" || elementProperty is "author" || itemProp is "author")
-                {                    
+                {
                     values["author"] = content;
                 }
 
@@ -509,13 +502,13 @@ namespace SmartReader
                 {
                     matches = Regex.Matches(elementProperty, propertyPattern);
                     if (matches.Count > 0)
-                    {                        
+                    {
                         // Convert to lowercase, and remove any whitespace
                         // so we can match below.
                         name = Regex.Replace(matches[0].Value.ToLowerInvariant(), @"\s+", "");
 
                         // multiple authors
-                        values[name] = content.Trim();                        
+                        values[name] = content.Trim();
                     }
                 }
 
@@ -523,7 +516,7 @@ namespace SmartReader
                   && elementName is { Length: > 0 } && Regex.IsMatch(elementName, namePattern, RegexOptions.IgnoreCase))
                 {
                     name = elementName;
-                    
+
                     // Convert to lowercase, remove any whitespace, and convert dots
                     // to colons so we can match below.
                     name = Regex.Replace(Regex.Replace(name.ToLowerInvariant(), @"\s+", ""), @"\.", ":");
@@ -569,7 +562,7 @@ namespace SmartReader
 
             IEnumerable<string?> SiteNameKeys()
             {
-                yield return values.GetValueOrDefault("jsonld:siteName") ;
+                yield return values.GetValueOrDefault("jsonld:siteName");
                 yield return values.GetValueOrDefault("og:site_name");
             }
 
@@ -582,14 +575,14 @@ namespace SmartReader
                 yield return values.GetValueOrDefault("jsonld:title");
                 yield return values.GetValueOrDefault("dc:title");
                 yield return values.GetValueOrDefault("dcterm:title");
-                yield return values.GetValueOrDefault("og:title") ;
+                yield return values.GetValueOrDefault("og:title");
                 yield return values.GetValueOrDefault("weibo:article:title");
                 yield return values.GetValueOrDefault("weibo:webpage:title");
                 yield return values.GetValueOrDefault("twitter:title");
                 yield return values.GetValueOrDefault("title");
             }
 
-            metadata.Title = FirstNonEmptyValueOrDefault(TitleKeys()) ?? ""; 
+            metadata.Title = FirstNonEmptyValueOrDefault(TitleKeys()) ?? "";
 
             // Let's try to eliminate the site name from the title
             metadata.Title = CleanTitle(metadata.Title, metadata.SiteName);
@@ -633,7 +626,7 @@ namespace SmartReader
             }
 
             metadata.FeaturedImage = FirstNonEmptyValueOrDefault(FeaturedImageKeys()) ?? "";
-            
+
             // We try to find a meta tag for the author.
             // Note that there is Open Grapg tag for an author,
             // but it usually contains a profile URL of the author.
@@ -683,7 +676,7 @@ namespace SmartReader
 
             if (metadata.PublicationDate is null)
             {
-                var times = doc.GetElementsByTagName("time");               
+                var times = doc.GetElementsByTagName("time");
 
                 foreach (var time in times)
                 {
@@ -698,18 +691,29 @@ namespace SmartReader
             if (metadata.PublicationDate is null)
             {
                 // as a last resort check the URL for a date
-                Match maybeDate = Regex.Match(uri.PathAndQuery, "/(?<year>[0-9]{4})/(?<month>[0-9]{2})/(?<day>[0-9]{2})?");
+                Match maybeDate = Regex.Match(uri.PathAndQuery, "/(?<year>[0-9]{4})/(?<month>[0-9]{2})/((?<day>[0-9]{2})/)?");                
+
                 if (maybeDate.Success)
                 {
-                    metadata.PublicationDate = new DateTime(int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture),
-                        int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture),
-                        !string.IsNullOrEmpty(maybeDate.Groups["day"].Value) ? int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture) : 1);
+                    int month = int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture);
+                    int year = int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture);
+
+                    // the number that we think represents a day can also represents some other things
+                    int numberForDay = 1;
+                    if (!string.IsNullOrEmpty(maybeDate.Groups["day"].Value))
+                    {                        
+                        numberForDay = int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture);
+                        if (DateTime.DaysInMonth(year, month) < numberForDay)
+                            numberForDay = 1;
+                    }                    
+                                            
+                    metadata.PublicationDate = new DateTime(year, month, numberForDay);
                 }
             }
 
             // in many sites the meta value is escaped with HTML entities,
             // so here we need to unescape it    
-            metadata.Title = HttpUtility.HtmlDecode(metadata.Title).Trim();            
+            metadata.Title = HttpUtility.HtmlDecode(metadata.Title).Trim();
             metadata.Excerpt = HttpUtility.HtmlDecode(metadata.Excerpt).Trim();
             metadata.SiteName = HttpUtility.HtmlDecode(metadata.SiteName).Trim();
 

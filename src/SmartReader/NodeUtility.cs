@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
+using AngleSharp.Text;
 
 namespace SmartReader
 {
@@ -13,8 +14,8 @@ namespace SmartReader
     {
         // All of the regular expressions in use within readability.
         // Defined up here so we don't instantiate them repeatedly in loops.
-        private static readonly Regex RE_HasContent      = new Regex(@"\S$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex RE_HashUrl         = new Regex(@"^#.+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex RE_HasContent = new Regex(@"\S$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex RE_HashUrl    = new Regex(@"^#.+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly string[] divToPElems = { "BLOCKQUOTE", "DL", "DIV", "IMG", "OL", "P", "PRE", "TABLE", "UL" };
 
@@ -59,11 +60,7 @@ namespace SmartReader
             {
                 var attr = node.Attributes[i]!;
 
-                // the possible result of malformed HTML
-                if (!attr.Name.Contains("<") && !attr.Name.Contains(">"))
-                {
-                    replacement.SetAttribute(attr.Name, attr.Value);
-                }
+                NodeUtility.SafeSetAttribute(replacement, attr);                
             }
             return replacement;
         }
@@ -102,7 +99,7 @@ namespace SmartReader
 
         internal static ReadOnlySpan<char> GetDisplayFromStyle(string style)
         {
-            int displayIndex = style.IndexOf("display", StringComparison.OrdinalIgnoreCase);
+            int displayIndex = style.IndexOf("display:", StringComparison.OrdinalIgnoreCase);
 
             if (displayIndex > -1)
             {
@@ -305,18 +302,21 @@ namespace SmartReader
         /// <param name="element">The element to operate on</param>
         internal static void RemoveScripts(IElement element)
         {
-            RemoveNodes(element.GetElementsByTagName("script"), static scriptNode =>
-            {
-                scriptNode.NodeValue = "";
-                scriptNode.RemoveAttribute("src");
-                return true;
-            });
-            RemoveNodes(element.GetElementsByTagName("noscript"));
+            RemoveNodes(GetAllNodesWithTag(element, new string[] { "script", "noscript" }));
         }
 
         /// <summary>
+        /// Removes comments from the element
+        /// </summary>
+        /// <param name="element">The element to operate on</param>
+        internal static void RemoveComments(IElement element)
+        {
+            element.Descendents<IComment>().ToList().ForEach(el => el.Remove());
+        }            
+
+        /// <summary>
         /// Check if this node has only whitespace and a single element with given tag
-	    /// Returns false if the DIV node contains non-empty text nodes
+        /// Returns false if the DIV node contains non-empty text nodes
         /// or if it contains no element with given tag or more than 1 element.
         /// </summary>
         /// <param name="element">Element to operate on</param>
@@ -602,7 +602,7 @@ namespace SmartReader
         {
             var i = 0;
             var ancestors = new List<INode>();
-            while (node.Parent != null)
+            while (node?.Parent != null)
             {
                 ancestors.Add(node.Parent);
                 if (maxDepth != 0 && ++i == maxDepth)
@@ -627,6 +627,21 @@ namespace SmartReader
                 next = next.NextSibling;
             }
             return next as IElement;
+        }
+
+        /// <summary>
+        /// This is a safe method to write attributes
+        /// because AngleSharp cannot handle attribute names that would be invalid in XML
+        /// </summary>  
+        internal static void SafeSetAttribute(this IElement child, IAttr attribute)
+        {
+            if (attribute.Name.IsXmlName())
+                child.SetAttribute(attribute.Name, attribute.Value);
+            else
+            {
+                if(!String.IsNullOrEmpty(attribute.Name.CleanXmlName()))
+                    child.SetAttribute(attribute.Name.CleanXmlName(), attribute.Value);
+            }                
         }
     }
 }

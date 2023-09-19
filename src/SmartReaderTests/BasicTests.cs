@@ -16,18 +16,18 @@ namespace SmartReaderTests
         private readonly ITestOutputHelper _output;
         public BasicTests(ITestOutputHelper output)
         {
-            _output = output;            
+            _output = output;
         }
 
         [Fact]
         public void TestCleanTitleNoSitename()
-        {           
+        {
             Assert.Equal("Big title ", Readability.CleanTitle("Big title ", "Wikipedia"));
         }
 
         [Fact]
         public void TestCleanTitlePipe()
-        {            
+        {
             Assert.Equal("Big title", Readability.CleanTitle("Big title | Wikipedia", "Wikipedia"));
         }
 
@@ -56,6 +56,13 @@ namespace SmartReaderTests
         }
 
         [Fact]
+        public void TestCleanTitleDoesNotBreakWithRegexCharacters()
+        {
+            Assert.Equal("* No longer! *", Readability.CleanTitle("* No longer! *", "This is a *** problem"));
+            Assert.Equal("Maybe ?", Readability.CleanTitle("Maybe ?", "Is this a problem?"));
+        }
+
+        [Fact]
         public void TestGetArticleTitleIdTitle()
         {
             var parser = new HtmlParser(new HtmlParserOptions());
@@ -63,7 +70,7 @@ namespace SmartReaderTests
                <head><title>An article with a complex idea</title></head>
                <body></body>
                </html>");
-           
+
             Assert.Equal("An article with a complex idea", Readability.GetArticleTitle(doc));
         }
 
@@ -272,7 +279,9 @@ namespace SmartReaderTests
                <body></body>
                </html>");
 
-            Assert.Equal(new DateTime(2110, 10, 21), Readability.GetArticleMetadata(doc, new Uri("https://localhost/2110/10/21"), "", new Dictionary<string, string>()).PublicationDate);
+            Assert.Equal(new DateTime(2110, 10, 21), Readability.GetArticleMetadata(doc, new Uri("https://localhost/2110/10/21/"), "", new Dictionary<string, string>()).PublicationDate);
+            Assert.Equal(new DateTime(2110, 10, 1), Readability.GetArticleMetadata(doc, new Uri("https://localhost/2110/10/37"), "", new Dictionary<string, string>()).PublicationDate);
+            Assert.Equal(new DateTime(2010, 10, 1), Readability.GetArticleMetadata(doc, new Uri("https://localhost/2010/10/change_of_plans.html"), "", new Dictionary<string, string>()).PublicationDate);
         }
 
         [Fact]
@@ -304,7 +313,7 @@ namespace SmartReaderTests
             Reader.SetBaseHttpClientHandler(mockHttp);
 
             var article = new Article(new Uri("https://localhost/article"), "Great article", "by Ulysses", "", "en", "Nobody", doc.Body, new Metadata(), true, reader);
-            
+
             article.ConvertImagesToDataUriAsync().Wait();
 
             // check that there is one image
@@ -313,6 +322,25 @@ namespace SmartReaderTests
             int end = article.Content.IndexOf("\"", start + 1);
             // check that the src attribute is of the expected length
             Assert.Equal(572400, end - start);
+        }
+
+        [Fact]
+        public void TestCheckSVGDataURIIsPreserved()
+        {
+            var parser = new HtmlParser(new HtmlParserOptions());
+            var doc = parser.ParseDocument(@"<html>
+               <head></head>
+               <body>
+                    <p>This is a paragraph with some text.</p>
+                    <p>This is a paragraph with some other text.</p>
+                    <p>This is a paragraph with an image <img src=""data:image/svg+xml,%3C%3Fxml version='1.0' encoding='UTF-8'%3F%3E%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E""></img>.</p>
+               </body>
+               </html>");
+
+            Readability.FixRelativeUris(doc.Body, new Uri("https://localhost/article"), doc);
+
+            if (doc.Body.GetElementsByTagName("img")[0].GetAttribute("src") is string src)
+                Assert.False(src.StartsWith("https://localhost"));
         }
 
         [Fact]
@@ -333,11 +361,11 @@ namespace SmartReaderTests
             var reader = new Reader("https://localhost/article");
 
             var article = new Article(new Uri("https://localhost/article"), "Great article", "by Ulysses", "", "en", "Nobody", doc.Body, new Metadata(), true, reader);
-           
+
             // check that the text returned is correct
             Assert.Equal("This is a paragraph with some text.\r\n" +
                          "\r\nThis is a paragraph with some other text and lots of whitespace .\r\n" +
-                         "\r\nThis is a paragraph with different\r\nother text.", article.TextContent);           
+                         "\r\nThis is a paragraph with different\r\nother text.", article.TextContent);
         }
 
         [Fact]
@@ -366,7 +394,7 @@ namespace SmartReaderTests
             Article.Serializer = serializer;
 
             var article = new Article(new Uri("https://localhost/article"), "Great article", "by Ulysses", "", "en", "Nobody", doc.Body, new Metadata(), true, reader);
-            
+
             // restore standard serializer
             Article.Serializer = (AngleSharp.Dom.IElement element) =>
             {
@@ -374,7 +402,7 @@ namespace SmartReaderTests
             };
 
             // check that the text returned is correct
-            Assert.Equal(@"<p></p><p>This is a paragraph with some text.</p><p>This  	 is a paragraph   with some other text and lots of whitespace  .</p><p>This is 			a paragraph with different<br>other text.</p><pre>   Space inside here is       magic</pre>", article.Content);            
+            Assert.Equal(@"<p></p><p>This is a paragraph with some text.</p><p>This  	 is a paragraph   with some other text and lots of whitespace  .</p><p>This is 			a paragraph with different<br>other text.</p><pre>   Space inside here is       magic</pre>", article.Content);
         }
 
         [Fact]
@@ -406,7 +434,7 @@ namespace SmartReaderTests
             Assert.Equal(@"********** is a great language for system programming.", article.TextContent);
 
             // restore standard converter
-            Article.Converter = oldConverter;      
+            Article.Converter = oldConverter;
         }
 
         [Fact]

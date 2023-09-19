@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Ganss.XSS;
+using Ganss.Xss;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using SmartReader.WebDemo.Models;
@@ -26,16 +26,16 @@ namespace SmartReader.WebDemo.Controllers
         }
 
         public JsonResult Analyze(string url)
-        {            
+        {
             Reader sr = new Reader(url);
-         
+
             Article article = sr.GetArticle();
             var images = article.GetImagesAsync();
             images.Wait();
 
             // since this demo will be published, it's better to sanitize the content shown
             var sanitizer = new HtmlSanitizer();
-            string Content = sanitizer.Sanitize(article.Content);                        
+            string Content = sanitizer.Sanitize(article.Content);
 
             return Json(new
             {

@@ -2,6 +2,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using SmartReader;
 
@@ -10,8 +14,8 @@ namespace SmartReaderConsole
     class Program
     {
         static void AddInfo(AngleSharp.Dom.IElement element)
-        {       
-            if(element.QuerySelector("div")?.LastElementChild != null)
+        {
+            if (element.QuerySelector("div")?.LastElementChild != null)
                 element.QuerySelector("div").LastElementChild.InnerHtml += "<p>Article parsed by SmartReader</p>";
         }
 
@@ -27,6 +31,10 @@ namespace SmartReaderConsole
 
         static void RunRandomExample(int num = -1)
         {
+            // At the present moment most content is UTF8, so this increases the chances
+            // to see the text as you would see in a browser
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
             Article.Serializer = Program.RemoveSpace;
 
             var pages = Directory.EnumerateDirectories(@"..\..\..\..\SmartReaderTests\test-pages\");
@@ -40,7 +48,7 @@ namespace SmartReaderConsole
             string sourceContent = File.ReadAllText(Path.Combine(pages.ElementAt(index), "source.html"));
 
             Reader reader = new Reader("https://localhost/", sourceContent);
-            
+
             reader.ClassesToPreserve = new string[] { "info" };
 
             reader.Debug = true;
@@ -89,16 +97,16 @@ namespace SmartReaderConsole
 
         static void AddFieldToMetadataJsonForTests(string field)
         {
-            var pages = Directory.EnumerateDirectories(@"..\..\..\..\SmartReaderTests\test-pages\");            
-            foreach(var p in pages)
+            var pages = Directory.EnumerateDirectories(@"..\..\..\..\SmartReaderTests\test-pages\");
+            foreach (var p in pages)
             {
-                string sourceContent = File.ReadAllText(Path.Combine(p, "source.html"));               
+                string sourceContent = File.ReadAllText(Path.Combine(p, "source.html"));
 
-                Reader reader = new Reader("https://localhost/", sourceContent);               
+                Reader reader = new Reader("https://localhost/", sourceContent);
 
                 // get the article
-                Article article = reader.GetArticle();        
-                
+                Article article = reader.GetArticle();
+
                 List<string> lines;
 
                 lines = File.ReadAllLines(Path.Combine(p, "expected-metadata.json")).ToList();
@@ -111,8 +119,59 @@ namespace SmartReaderConsole
                 lines.Insert(lines.Count - 1, $"  \"{field.First().ToString().ToLower() + field.Substring(1)}\": \"{article.GetType().GetProperty(field).GetValue(article)}\"");
 
                 File.WriteAllLines(Path.Combine(p, "expected-metadata.json"), lines);
-            }                       
+            }
         }
+
+        static void AddTest(string name, string url)
+        {
+            string directory = @"..\..\..\..\SmartReaderTests\test-pages\" + name;
+            Directory.CreateDirectory(directory);
+
+            WebClient client = new WebClient();
+            client.DownloadFile(url, (Path.Combine(directory, "source.html")));
+
+            string sourceContent = File.ReadAllText(Path.Combine(directory, "source.html"));
+
+            Reader reader = new Reader("https://localhost/", sourceContent);
+
+            Article article = reader.GetArticle();
+
+            File.WriteAllText(Path.Combine(directory, "expected.html"), article.Content);
+
+            var jso = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                // to safely print non-ASCII characters
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            var obj = new
+            {
+                title = article.Title,
+                byline = article.Byline,
+                dir = article.Dir,
+                excerpt = article.Excerpt,
+                readerable = article.IsReadable,
+                language = article.Language,
+                timeToRead = article.TimeToRead.ToString(),
+                publicationDate = article.PublicationDate,
+                author = article.Author,
+                siteName = article.SiteName,
+                featuredImage = article.FeaturedImage
+            };
+            
+            File.WriteAllText(Path.Combine(directory, @"expected-metadata.json"), JsonSerializer.Serialize(obj, jso), System.Text.Encoding.UTF8);
+        }
+
+        static void SimpleTestUrl(string url)
+        {
+            Reader reader = new Reader(url);
+            Article article = reader.GetArticle();
+            
+            Console.WriteLine(article.Content);
+            Console.WriteLine(article.Title);
+        }        
 
         static void Main(string[] args)
         {
