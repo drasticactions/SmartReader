@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AngleSharp;
-using AngleSharp.Browser;
 using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
@@ -67,6 +66,19 @@ namespace SmartReader
         /// </summary>
         /// <value>Default: 500</value>
         public int CharThreshold { get; set; } = 500;
+
+        /// <summary>
+        /// The default level of depth a node must have to be used for scoring
+        /// Nodes without as many ancestors as this level are not counted
+        /// </summary>
+        /// <value>Default: 5</value>
+        public int AncestorsDepth { get; set; } = 5;
+
+        /// <summary>
+        /// The default number of characters a paragraph must have in order to be used for scoring
+        /// </summary>
+        /// <value>Default: 25</value>
+        public int ParagraphThreshold { get; set; } = 25;
 
         private static readonly IEnumerable<string> s_page = new string[] { "page" };
 
@@ -173,6 +185,9 @@ namespace SmartReader
         private static readonly Regex G_RE_PrevLink = new Regex(@"(prev|earl|old|new|<|«)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex G_RE_ShareElements = new Regex(@"(\b|_)(share|sharedaddy)(\b|_)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex G_RE_B64DataUrl = new Regex(@"^data:\s*([^\s;,]+)\s*;\s*base64\s*,", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        // Commas as used in Latin, Sindhi, Chinese and various other scripts.
+        // see: https://en.wikipedia.org/wiki/Comma#Comma_variants
+        private static readonly Regex G_RE_Commas = new Regex(@"\u002C|\u060C|\uFE50|\uFE10|\uFE11|\u2E41|\u2E34|\u2E32|\uFF0C", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex RE_Whitespace = new Regex(@"^\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -838,6 +853,13 @@ namespace SmartReader
                         continue;
                     }
 
+                    // User is not able to see elements applied with both "aria-modal = true" and "role = dialog"
+                    if (node.GetAttribute("aria-modal") is "true" && node.GetAttribute("role") is "dialog")
+                    {
+                        node = NodeUtility.RemoveAndGetNext(node);
+                        continue;
+                    }
+
                     // Check to see if this node is a byline, and remove it if it is.
                     if (CheckByline(node, matchString))
                     {
@@ -881,7 +903,6 @@ namespace SmartReader
                     }
 
                     // Remove DIV, SECTION, and HEADER nodes without any content(e.g. text, image, video, or iframe).
-
                     if ((node.TagName is "DIV" or "SECTION" or "HEADER"
                         or "H1" or "H2" or "H3" or "H4" or "H5" or "H6") &&
                         NodeUtility.IsElementWithoutContent(node))
@@ -958,6 +979,7 @@ namespace SmartReader
 				 * A score is determined by things like number of commas, class names, etc. Maybe eventually link density.
 				*/
                 var candidates = new List<IElement>();
+
                 foreach (var elementToScore in elementsToScore)
                 {
                     if (elementToScore.Parent is null)
@@ -965,11 +987,11 @@ namespace SmartReader
 
                     // If this paragraph is less than 25 characters, don't even count it.
                     string innerText = NodeUtility.GetInnerText(elementToScore);
-                    if (innerText.Length < 25)
+                    if (innerText.Length < ParagraphThreshold)
                         continue;
 
                     // Exclude nodes with no ancestor.
-                    var ancestors = NodeUtility.GetNodeAncestors(elementToScore, 5);
+                    var ancestors = NodeUtility.GetNodeAncestors(elementToScore, AncestorsDepth);
                     if (ancestors.Count is 0)
                         continue;
 
@@ -979,7 +1001,7 @@ namespace SmartReader
                     contentScore += 1;
 
                     // Add points for any commas within this paragraph.
-                    contentScore += TextUtility.CountWordsSeparatedByComma(innerText.AsSpan());
+                    contentScore += G_RE_Commas.Split(innerText).Length;
 
                     // For every 100 characters in this paragraph, add another point. Up to 3 points.
                     contentScore += Math.Min(Math.Floor(innerText.Length / 100.0), 3);
@@ -1793,6 +1815,26 @@ namespace SmartReader
                       (!isList && weight < 25 && linkDensity > 0.2f) ||
                       (weight >= 25f && linkDensity > 0.5f) ||
                       ((embedCount == 1 && contentLength < 75) || embedCount > 1);
+
+                    // Allow simple lists of images to remain in pages
+                    if (isList && haveToRemove)
+                    {
+                        for (var x = 0; x < node.Children.Length; x++)
+                        {
+                            var child = node.Children[x];
+                            // Don't filter in lists with li's that contain more than one child
+                            if (child.Children.Length > 1)
+                            {
+                                return haveToRemove;
+                            }
+                        }
+                        var li_count = node.GetElementsByTagName("li").Length;
+                        // Only allow the list to remain if every li contains an image
+                        if (img == li_count)
+                        {
+                            return false;
+                        }
+                    }
 
                     return haveToRemove;
                 }

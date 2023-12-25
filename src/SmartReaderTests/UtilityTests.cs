@@ -1,4 +1,5 @@
 ﻿using SmartReader;
+using System;
 using Xunit;
 
 namespace SmartReaderTests
@@ -12,5 +13,21 @@ namespace SmartReaderTests
 
             Assert.Equal("hidden", NodeUtility.GetVisibilityFromStyle(style).ToString());
         }
+
+        [Fact]
+        public void TestTextSimilarity()
+        {
+            var similarity = Readability.TextSimilarity("Dublin Core property title", "Test document title");
+            
+            Assert.True(similarity < 0.75);
+        }
+
+        [Fact]
+        public void TestStyleWithDisplayTextDoesNotCrash()
+        {
+            var style = "border:0;vertical-align:middle;font-family:PFDinDisplayProLight;font-size:13px;font-style:normal;font-weight:normal;letter-spacing:normal;text-align:start;text-indent:0;text-transform:none;text-decoration:none";
+
+            Assert.Equal("", NodeUtility.GetDisplayFromStyle(style).ToString());
+        }        
     }
 }

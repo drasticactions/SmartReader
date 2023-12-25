@@ -7,7 +7,7 @@ namespace SmartReader
 {
     internal static class TextUtility
     {
-        public static int CountWordsSeparatedByComma(ReadOnlySpan<char> text)
+        internal static int CountWordsSeparatedByComma(ReadOnlySpan<char> text)
         {
             int commaCount = 0;
             int commaIndex;
@@ -22,15 +22,20 @@ namespace SmartReader
             return commaCount + 1;
         }
 
-        public static String CleanXmlName(this String str)
+        internal static string CleanXmlName(this string str)
         {
             if (str.Length > 0)
             {
                 StringBuilder sb = new StringBuilder();
-                if (str[0].IsXmlNameStart())
-                    sb.Append(str[0]);
+                int startI = 0;
+                // Characters that are valid as part of the name might be invalid at the start.
+                // We need to make sure the first new character is valid
+                while(startI < str.Length && !str[startI].IsXmlNameStart())
+                {
+                    startI++;
+                }                               
 
-                for (var i = 1; i < str.Length; i++)
+                for (var i = startI; i < str.Length; i++)
                 {
                     if (str[i].IsXmlName())
                     {

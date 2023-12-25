@@ -154,9 +154,8 @@ namespace SmartReader
             // eliminate any text after a separator
             if (!string.IsNullOrEmpty(siteName) && title.IndexOfAny(titleSeperators) != -1)
             {
-
                 // we eliminate the text after the separator only if it is the site name
-                title = Regex.Replace(title, $"(.*) [\\|\\-\\\\/>»] {siteName}.*", "$1", RegexOptions.IgnoreCase);
+                title = Regex.Replace(title, $"(.*) [\\|\\-\\\\/>»] {Regex.Escape(siteName)}.*", "$1", RegexOptions.IgnoreCase);
             }
 
             title = RE_Normalize.Replace(title, " ");
@@ -188,10 +187,7 @@ namespace SmartReader
                         var child = node.Children[0];
                         for (var i = 0; i < node.Attributes.Length; i++)
                         {
-                            if (node.Attributes[i]!.Name.IsXmlName())
-                                child.SetAttribute(node.Attributes[i]!.Name, node.Attributes[i]!.Value);
-                            else
-                                child.SetAttribute(node.Attributes[i]!.Name.CleanXmlName(), node.Attributes[i]!.Value);
+                            NodeUtility.SafeSetAttribute(child, node.Attributes[i]!);                            
                         }
                         node.Parent.ReplaceChild(child, node);
                         node = child;
@@ -221,7 +217,7 @@ namespace SmartReader
                 if (typeof(string) != curTitle.GetType())
                     curTitle = origTitle = NodeUtility.GetInnerText(doc.GetElementsByTagName("title")[0]);
             }
-            catch (Exception e) {/* ignore exceptions setting the title. */}
+            catch (Exception) {/* ignore exceptions setting the title. */}
 
             var titleHadHierarchicalSeparators = false;
             static int wordCount(string str)
@@ -269,7 +265,7 @@ namespace SmartReader
                     curTitle = NodeUtility.GetInnerText(hOnes[0]);
             }
 
-            curTitle = curTitle.Trim();
+            curTitle = RE_Normalize.Replace(curTitle.Trim(), " ");
 
             // If we now have 4 words or fewer as our title, and either no
             // 'hierarchical' separators (\, /, > or ») were found in the original
@@ -293,8 +289,8 @@ namespace SmartReader
         /// the result is given by the lower length of unique parts
         /// </summary>
         /// <param name="textA">first text to compare</param>
-        /// <param name="textb">second text to compare</param>
-        internal static int TextSimilarity(string textA, string textB)
+        /// <param name="textB">second text to compare</param>
+        internal static float TextSimilarity(string textA, string textB)
         {
             var tokensA = RE_Tokenize.Split(textA.ToLowerInvariant()).Where(x => x.Length != 0).ToArray();
             var tokensB = RE_Tokenize.Split(textB.ToLowerInvariant()).Where(x => x.Length != 0).ToArray();
@@ -303,7 +299,7 @@ namespace SmartReader
                 return 0;
             }
             var uniqTokensB = tokensB.Where(token => !tokensA.Contains(token));
-            var distanceB = string.Join(" ", uniqTokensB).Length / string.Join(" ", tokensB).Length;
+            var distanceB = (float) string.Join(" ", uniqTokensB).Length / string.Join(" ", tokensB).Length;
             return 1 - distanceB;
         }
 
@@ -454,10 +450,7 @@ namespace SmartReader
                             jsonLDMetadata["jsonld:image"] = value.GetProperty("image").GetString()!;
                         }
                     }
-                    catch (Exception e)
-                    {
-
-                    }
+                    catch (Exception) { }
                 }
             });
 
@@ -705,12 +698,23 @@ namespace SmartReader
             if (metadata.PublicationDate is null)
             {
                 // as a last resort check the URL for a date
-                Match maybeDate = Regex.Match(uri.PathAndQuery, "/(?<year>[0-9]{4})/(?<month>[0-9]{2})/(?<day>[0-9]{2})?");
+                Match maybeDate = Regex.Match(uri.PathAndQuery, "/(?<year>[0-9]{4})/(?<month>[0-9]{2})/((?<day>[0-9]{2})/)?");                
+
                 if (maybeDate.Success)
                 {
-                    metadata.PublicationDate = new DateTime(int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture),
-                        int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture),
-                        !string.IsNullOrEmpty(maybeDate.Groups["day"].Value) ? int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture) : 1);
+                    int month = int.Parse(maybeDate.Groups["month"].Value, CultureInfo.InvariantCulture);
+                    int year = int.Parse(maybeDate.Groups["year"].Value, CultureInfo.InvariantCulture);
+
+                    // the number that we think represents a day can also represents some other things
+                    int numberForDay = 1;
+                    if (!string.IsNullOrEmpty(maybeDate.Groups["day"].Value))
+                    {                        
+                        numberForDay = int.Parse(maybeDate.Groups["day"].Value, CultureInfo.InvariantCulture);
+                        if (DateTime.DaysInMonth(year, month) < numberForDay)
+                            numberForDay = 1;
+                    }                    
+                                            
+                    metadata.PublicationDate = new DateTime(year, month, numberForDay);
                 }
             }
 
